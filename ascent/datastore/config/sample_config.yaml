@@ -1,16 +1,28 @@
-#elasticsearch:
-#    uri: "1.1.1.1"
-#    idx_uri: "1.1.1.1"
-#    username: elastic
-#    password: elastic
-#    ssl_verify: False
-#    timeout: 5
+elasticsearch:
+    uri: "1.1.1.1"
+    idx_uri: "1.1.1.1"
+    username: elastic
+    password: elastic
+    ssl_verify: False
+    timeout: 5
 mysql:
     hostname: "localhost"
     port: 3306
     username: "root"
     password: "password"
-    database: "akshobhya"
+    database: "database"
+mssql:
+    hostname: "localhost"
+    port: 3306
+    username: "root"
+    password: "password"
+    database: "database"
+postgresql:
+    hostname: "localhost"
+    port: 3306
+    username: "root"
+    password: "password"
+    database: "database"
 log:
     log:
     level: INFO
