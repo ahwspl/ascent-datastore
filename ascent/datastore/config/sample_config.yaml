@@ -10,7 +10,7 @@ mysql:
     port: 3306
     username: "root"
     password: "password"
-    database: "dummy_database"
+    database: "akshobhya"
 log:
     log:
     level: INFO
