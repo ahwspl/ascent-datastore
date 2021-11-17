@@ -1,0 +1,22 @@
+#elasticsearch:
+#    uri: "1.1.1.1"
+#    idx_uri: "1.1.1.1"
+#    username: elastic
+#    password: elastic
+#    ssl_verify: False
+#    timeout: 5
+mysql:
+    hostname: "localhost"
+    port: 3306
+    username: "root"
+    password: "password"
+    database: "dummy_database"
+log:
+    log:
+    level: INFO
+    format: '[%(asctime)s.%(msecs)03dZ] [%(levelname)s]: %(message)s'
+    date_format: '%Y-%m-%dT%H:%M:%S'
+    app_code: '0700'
+    app_name: ascent_datastore
+    log_file_name: ascent_datastore
+    log_dir: logs
