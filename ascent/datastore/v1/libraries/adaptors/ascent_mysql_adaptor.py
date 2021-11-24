@@ -1,7 +1,6 @@
 import os
 import json
 import logging
-import requests
 import functools
 from ..helpers import common_util as utils
 from ..helpers.DBOperationError import DBOperationError
@@ -251,17 +250,45 @@ class AscentMySQLAdaptor(object):
         Returns:
             dict: Returns a dictionary with MySQL responses
         """
+        response = {
+            "_index": index,
+            "_type": "_doc",
+            "_seq_no": 0,
+            "primary_term": 1,
+            "found": False,
+            "_source": {}
+        }
         try:
+            if self.exists_index(index=index) is False:
+                raise DBOperationError(f'MySQL get failed. Index {index} not found')
             query = ("SELECT * FROM %s WHERE " % index)
             if doc_id is None:
                 query += (list(kwargs.keys())[0] + "=" + str(list(kwargs.values())[0]))
+                response.update(
+                    {
+                        "_id": str(list(kwargs.values())[0])
+                    }
+                )
             else:
                 query += ("id=%s" % doc_id)
+                response.update(
+                    {
+                        "_id": doc_id
+                    }
+                )
             self.cursor.execute(query)
-            response = self.cursor.fetchall()
+            query_output = self.cursor.fetchall()
+            if query_output:
+                response.update(
+                    {
+                        "found": True,
+                        "_source": query_output[0]
+                    }
+                )
             return response
         except mysql.connector.errors as err:
             self.logger.error(f"Failed to retrieve data with id {str(doc_id)} from table {str(index)}: {str(err)}")
+            raise DBOperationError(f"MySQL get failed. Reason - {str(err)}")
 
     def update_by_query(self, index, doc_id=None, request_timeout=60, **kwargs):
         """ Function wrapped around MySQL python client get function
@@ -387,7 +414,12 @@ class AscentMySQLAdaptor(object):
         Returns:
             bool: Returns a boolean indicating whether or not given document exists in MySQL.
         """
-        pass
+        try:
+            response = self.get(index=index, doc_id=doc_id, **kwargs)
+            return response.get("found")
+        except mysql.connector.errors as err:
+            self.logger.error(f"Failed to retrieve data with id {str(doc_id)} from table {str(index)}: {str(err)}")
+            raise DBOperationError(f'MySQL exists document failed. Reason - {str(err)}')
 
     def exists_index(self, index, request_timeout=60, **kwargs):
         """ Function wrapped around MySQL python client indices.exists function
@@ -404,7 +436,18 @@ class AscentMySQLAdaptor(object):
         Returns:
             bool: Return a boolean indicating whether given index exists.
         """
-        pass
+        try:
+            query = (
+                    "SELECT * FROM information_schema.tables WHERE table_schema='%s' AND table_name='%s'" %
+                    (self.mysql_configs['database'], index)
+            )
+            self.cursor.execute(query)
+            if bool(self.cursor.fetchone()):
+                return True
+            return False
+        except Exception as err:
+            self.logger.error(f"Failed to check if MySQL table exists. Reason - {str(err)}")
+            raise DBOperationError(f'MySQL exists index failed. Reason - {str(err)}')
 
     def exists_alias(self, name, request_timeout=60, **kwargs):
         """Check if alias exists
@@ -469,7 +512,17 @@ class AscentMySQLAdaptor(object):
             dict: Returns a dictionary with responses
 
         """
-        pass
+        try:
+            if self.exists_index(index=index) is False:
+                raise DBOperationError(f'MySQL delete index failed. Index {index} not found')
+            query = ("DROP TABLE %s.%s" % (self.mysql_configs['database'], index))
+            self.cursor.execute(query)
+            return {
+                "acknowledged": True
+            }
+        except Exception as err:
+            self.logger.error(f"Failed to check if MySQL table exists. Reason - {str(err)}")
+            raise DBOperationError(f'MySQL delete index failed. Reason - {str(err)}')
 
     def refresh(self, index, request_timeout=60, **kwargs):
         """ Function wrapped around MySQL python client refresh function

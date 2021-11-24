@@ -1,12 +1,11 @@
 import os
 import json
 import logging
-import requests
 import functools
 from ..helpers import common_util as utils
 from ..helpers.DBOperationError import DBOperationError
-import mysql.connector
-from mysql.connector import errorcode
+import pymssql
+from pymssql import _mssql
 
 
 class AscentMSSQLAdaptor(object):
@@ -22,47 +21,42 @@ class AscentMSSQLAdaptor(object):
         configs = ds_config if isinstance(ds_config, dict) else utils.load_config_file(ds_config)
         self.db = None
 
-        if 'mysql' not in configs:
-            raise KeyError('mysql')
+        if 'mssql' not in configs:
+            raise KeyError('mssql')
 
-        self.mysql_configs = dict()
-        self.mysql_configs['hostname'] = configs['mysql']['hostname']
-        self.mysql_configs['port'] = configs['mysql'].get('port', 3306)
-        self.mysql_configs['database'] = configs['mysql']['database']
+        self.mssql_configs = dict()
+        self.mssql_configs['hostname'] = configs['mssql']['hostname']
+        self.mssql_configs['port'] = configs['mssql'].get('port', 3306)
+        self.mssql_configs['database'] = configs['mssql']['database']
 
-        self.auth_type, mysql_username, mysql_password = None, configs['mysql'].get('username', None), None
-        if mysql_username is not None:
+        self.auth_type, mssql_username, mssql_password = None, configs['mssql'].get('username', None), None
+        if mssql_username is not None:
             self.auth_type = "Basic"
             if configs['mysql'].get('password', None) is not None:
-                mysql_password = configs['mysql']['password']
-            elif os.environ.get("MYSQL_PASS") is not None:
-                mysql_password = os.environ.get("MYSQL_PASS")
+                mssql_password = configs['mssql']['password']
+            elif os.environ.get("MSSQL_PASS") is not None:
+                mssql_password = os.environ.get("MSSQL_PASS")
             else:
                 self.logger.warn("Database password is not defined!")
         else:
             self.logger.warn("Database username is not defined!")
 
         kwargs = dict()
-        for item, value in self.mysql_configs.items():
+        for item, value in self.mssql_configs.items():
             if value is not None:
                 kwargs[item] = value
-        self.logger.info("Connecting to {} database...".format('mysql'))
+        self.logger.info("Connecting to {} database...".format('mssql'))
         try:
-            self.db = mysql.connector.connect(
-                host=self.mysql_configs['hostname'],
-                port=self.mysql_configs['port'],
-                user=mysql_username,
-                password=mysql_password,
-                database=self.mysql_configs['database']
+            self.db = pymssql.connect(
+                server=self.mssql_configs['hostname'],
+                port=self.mssql_configs['port'],
+                user=mssql_username,
+                password=mssql_password,
+                database=self.mssql_configs['database']
             )
             self.cursor = self.db.cursor(dictionary=True)
-        except mysql.connector.Error as err:
-            if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-                self.logger.error("Something went wrong with the username and password provided in the request")
-            elif err.errno == errorcode.ER_BAD_DB_ERROR:
-                self.logger.error("Database {} does not exist!".format(self.mysql_configs['database']))
-            else:
-                self.logger.error("Encountered error when connecting to the {} database".format('mysql'))
+        except _mssql.MssqlDatabaseException as err:
+            self.logger.error("Encountered error when connecting to the {} database: {}".format('mssql', str(err)))
         else:
             pass
             # self.db.close()
@@ -251,17 +245,45 @@ class AscentMSSQLAdaptor(object):
         Returns:
             dict: Returns a dictionary with MySQL responses
         """
+        response = {
+            "_index": index,
+            "_type": "_doc",
+            "_seq_no": 0,
+            "primary_term": 1,
+            "found": False,
+            "_source": {}
+        }
         try:
+            if self.exists_index(index=index) is False:
+                raise DBOperationError(f'MSSQL get failed. Index {index} not found')
             query = ("SELECT * FROM %s WHERE " % index)
             if doc_id is None:
                 query += (list(kwargs.keys())[0] + "=" + str(list(kwargs.values())[0]))
+                response.update(
+                    {
+                        "_id": str(list(kwargs.values())[0])
+                    }
+                )
             else:
                 query += ("id=%s" % doc_id)
+                response.update(
+                    {
+                        "_id": doc_id
+                    }
+                )
             self.cursor.execute(query)
-            response = self.cursor.fetchall()
+            query_output = self.cursor.fetchall()
+            if query_output:
+                response.update(
+                    {
+                        "found": True,
+                        "_source": query_output[0]
+                    }
+                )
             return response
-        except mysql.connector.errors as err:
+        except Exception as err:
             self.logger.error(f"Failed to retrieve data with id {str(doc_id)} from table {str(index)}: {str(err)}")
+            raise DBOperationError(f"MSSQL get failed. Reason - {str(err)}")
 
     def update_by_query(self, index, doc_id=None, request_timeout=60, **kwargs):
         """ Function wrapped around MySQL python client get function
@@ -387,7 +409,12 @@ class AscentMSSQLAdaptor(object):
         Returns:
             bool: Returns a boolean indicating whether or not given document exists in MySQL.
         """
-        pass
+        try:
+            response = self.get(index=index, doc_id=doc_id, **kwargs)
+            return response.get("found")
+        except Exception as err:
+            self.logger.error(f"Failed to retrieve data with id {str(doc_id)} from table {str(index)}: {str(err)}")
+            raise DBOperationError(f'MSSQL exists document failed. Reason - {str(err)}')
 
     def exists_index(self, index, request_timeout=60, **kwargs):
         """ Function wrapped around MySQL python client indices.exists function
@@ -404,7 +431,18 @@ class AscentMSSQLAdaptor(object):
         Returns:
             bool: Return a boolean indicating whether given index exists.
         """
-        pass
+        try:
+            query = (
+                    "SELECT * FROM information_schema.tables WHERE table_schema='%s' AND table_name='%s'" %
+                    (self.mssql_configs['database'], index)
+            )
+            self.cursor.execute(query)
+            if bool(self.cursor.fetchone()):
+                return True
+            return False
+        except Exception as err:
+            self.logger.error(f"Failed to check if MSSQL table exists. Reason - {str(err)}")
+            raise DBOperationError(f'MSSQL exists index failed. Reason - {str(err)}')
 
     def exists_alias(self, name, request_timeout=60, **kwargs):
         """Check if alias exists
@@ -469,7 +507,17 @@ class AscentMSSQLAdaptor(object):
             dict: Returns a dictionary with responses
 
         """
-        pass
+        try:
+            if self.exists_index(index=index) is False:
+                raise DBOperationError(f'MSSQL delete index failed. Index {index} not found')
+            query = ("DROP TABLE %s.%s" % (self.mssql_configs['database'], index))
+            self.cursor.execute(query)
+            return {
+                "acknowledged": True
+            }
+        except Exception as err:
+            self.logger.error(f"Failed to check if MSSQL table exists. Reason - {str(err)}")
+            raise DBOperationError(f'MSSQL delete index failed. Reason - {str(err)}')
 
     def refresh(self, index, request_timeout=60, **kwargs):
         """ Function wrapped around MySQL python client refresh function

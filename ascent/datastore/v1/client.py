@@ -27,6 +27,10 @@ class Client(object):
                 self.ds_adaptor = AscentMSSQLAdaptor(ds_config)
             elif 'mysql' in configs:
                 self.ds_adaptor = AscentMySQLAdaptor(ds_config)
+            elif 'postgresql' in configs:
+                self.ds_adaptor = AscentPGSQLAdaptor(ds_config)
+            else:
+                raise Exception("Invalid connector")
         else:
             self.ds_adaptor = ds_config
 
@@ -83,7 +87,7 @@ class Client(object):
         Returns:
             bool: Return a boolean indicating whether given table exists.
         """
-        pass
+        return self.ds_adaptor.exists_index(index=table, **kwargs)
 
     def table_create(self, table, body=None, **kwargs):
         """ Function wrapped around Ascent Databases library create table function
@@ -148,7 +152,7 @@ class Client(object):
         Returns:
             dict: Returns a dictionary with responses
         """
-        pass
+        return self.ds_adaptor.indices_delete(index=table, **kwargs)
 
     def create(self, table, data=None, bulk=False, doc_id=None, **kwargs):
         """ Function to create document
@@ -268,7 +272,7 @@ class Client(object):
         """
         return self.ds_adaptor.get(table, doc_id=doc_id, **kwargs)
 
-    def exists_document(self, table, doc_id, **kwargs):
+    def exists_document(self, table, doc_id=None, **kwargs):
         """ Function wrapped around Ascent Databases exists function
 
             Returns a boolean indicating whether or not given document exists in Database.
@@ -280,7 +284,7 @@ class Client(object):
         Returns:
             bool: Returns a boolean indicating whether or not given document exists in Database.
         """
-        pass
+        return self.ds_adaptor.exists_document(table, doc_id=doc_id, **kwargs)
 
     def document_delete(self, table, doc_id, bulk=False, **kwargs):
         """ Function wrapped around Ascent Databases document_delete function

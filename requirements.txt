@@ -5,3 +5,4 @@ bcrypt==3.2.0
 elasticsearch==7.10.0
 requests==2.24.0
 pymssql==2.2.2
+psycopg2==2.9.2
