@@ -54,7 +54,7 @@ class AscentPGSQLAdaptor(object):
                 password=postgresql_password,
                 database=self.postgresql_configs['database']
             )
-            self.cursor = self.db.cursor(dictionary=True)
+            self.cursor = self.db.cursor()
         except psycopg2.errors as err:
             self.logger.error("Encountered error when connecting to the {} database: {}".format('postgresql', str(err)))
         else:
@@ -340,7 +340,52 @@ class AscentPGSQLAdaptor(object):
         Returns:
             dict: Returns a dictionary with MySQL responses
         """
-        pass
+        response = {
+            "acknowledged": False,
+            "index": index
+        }
+        try:
+            query = body
+            # parsing the body param based on the type -> dict => parsing fields and constraints to generate the query
+            if type(body) is dict:
+                query = "CREATE TABLE %s (%s %s) "
+                field_add = ""
+                fields = body["mappings"]["properties"]["fields"]
+                for key, value in fields.items():
+                    field_add += f" {key} {value['type']} "
+                    if "constraints" in value.keys():
+                        for ikey, ivalue in value["constraints"].items():
+                            field_add += f" {ikey} "
+                            if type(ivalue) is not bool:
+                                field_add += f" {ivalue} "
+                    field_add += ","
+                constraints = body["mappings"]["properties"]["constraints"]
+
+                constraint_add = ""
+                for key, value in constraints.items():
+                    if key == "PRIMARY KEY":
+                        constraint_add += f", PRIMARY KEY ({value}),"
+                    elif key == "FOREIGN KEY":
+                        for item in value:
+                            constraint_add += f", CONSTRAINT {item['name']} FOREIGN KEY ({item['field']}) REFERENCES {item['reference']['table']} ({item['reference']['field']}),"
+
+                query = ''.join((query % (field_add, constraint_add, index)).rsplit(',', 1))
+
+            print(query)
+            self.logger.info(f"Executing CREATE TABLE query on the postgresql instance:\n{query}")
+            self.cursor.execute(query)
+            query_output = self.cursor.fetchall()
+            if query_output:
+                response.update(
+                    {
+                        "acknowledged": True
+                    }
+                )
+            return response
+
+        except Exception as err:
+            self.logger.error(f"Failed to create table in PostgreSQL. Reason - {str(err)}")
+            raise DBOperationError(f'PostgreSQL create table failed. Reason - {str(err)}')
 
     def delete_documents_by_query(self, index, body, request_timeout=60, **kwargs):
         """Delete a document

@@ -345,7 +345,51 @@ class AscentMySQLAdaptor(object):
         Returns:
             dict: Returns a dictionary with MySQL responses
         """
-        pass
+        response = {
+            "acknowledged": False,
+            "index": index
+        }
+        try:
+            query = body
+            # parsing the body param based on the type -> dict => parsing fields and constraints to generate the query
+            if type(body) is dict:
+                query = "CREATE TABLE %s (%s %s) "
+                field_add = ""
+                fields = body["mappings"]["properties"]["fields"]
+                for key, value in fields.items():
+                    field_add += f" `{key}` {value['type']} "
+                    if "constraints" in value.keys():
+                        for ikey, ivalue in value["constraints"].items():
+                            field_add += f" {ikey} "
+                            if type(ivalue) is not bool:
+                                field_add += f"{ivalue} "
+                    field_add += ","
+                constraints = body["mappings"]["properties"]["constraints"]
+
+                constraint_add = ""
+                for key, value in constraints.items():
+                    if key == "PRIMARY KEY":
+                        constraint_add += f" PRIMARY KEY (`{value}`),"
+                    elif key == "FOREIGN KEY":
+                        for item in value:
+                            constraint_add += f" CONSTRAINT {item['name']} FOREIGN KEY (`{item['field']}`) REFERENCES `{item['reference']['table']}` (`{item['reference']['field']}`),"
+
+                query = query % (field_add, constraint_add)
+                query = ''.join(query.rsplit(',', 1))
+
+            self.cursor.execute(query)
+            query_output = self.cursor.fetchall()
+            if query_output:
+                response.update(
+                    {
+                        "acknowledged": True
+                    }
+                )
+            return response
+
+        except mysql.connector.errors as err:
+            self.logger.error(f"Failed to create table {str(index)}: {str(err)}")
+            raise DBOperationError(f"MySQL create_index failed. Reason - {str(err)}")
 
     def delete_documents_by_query(self, index, body, request_timeout=60, **kwargs):
         """Delete a document

@@ -103,7 +103,7 @@ class Client(object):
         Returns:
             dict: Returns a dictionary with Elasticsearch responses
         """
-        pass
+        return self.ds_adaptor.create_index(index=table, body=body, **kwargs)
 
     def table_exists_alias(self, table, alias, **kwargs):
         """ Check if alias exists
@@ -299,7 +299,10 @@ class Client(object):
         Returns:
             bool: Returns a boolean indicating whether or not the given document is deleted in database.
         """
-        pass
+        if not bulk:
+            return self.ds_adaptor.delete_document(table, doc_id, **kwargs)
+        else:
+            return self.ds_adaptor.bulk_delete(table, doc_id, **kwargs)
 
     def percolate(self, table, data, **kwargs):
         """ Function wrapped around Ascent python client refresh function
