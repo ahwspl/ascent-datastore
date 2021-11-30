@@ -128,3 +128,5 @@ dmypy.json
 # Pyre type checker
 .pyre/
 .idea/
+tests/unittest/sample_config.yaml
+tests/unittest/test_client.py
